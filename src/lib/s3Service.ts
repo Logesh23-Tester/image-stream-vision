@@ -1,4 +1,6 @@
-import AWS from 'aws-sdk';
+import { S3Client, ListObjectsV2Command, PutObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { GetObjectCommand } from '@aws-sdk/client-s3';
 
 interface S3Image {
   key: string;
@@ -15,7 +17,7 @@ interface S3Config {
 }
 
 export class S3Service {
-  private s3: AWS.S3 | null = null;
+  private s3Client: S3Client | null = null;
   private config: S3Config | null = null;
 
   constructor() {
@@ -39,38 +41,35 @@ export class S3Service {
       throw new Error('S3 configuration not found');
     }
 
-    AWS.config.update({
-      accessKeyId: this.config.accessKeyId,
-      secretAccessKey: this.config.secretAccessKey,
+    this.s3Client = new S3Client({
       region: this.config.region,
-    });
-
-    this.s3 = new AWS.S3({
-      apiVersion: '2006-03-01',
-      params: { Bucket: this.config.bucketName },
+      credentials: {
+        accessKeyId: this.config.accessKeyId,
+        secretAccessKey: this.config.secretAccessKey,
+      },
     });
   }
 
   async listImages(): Promise<S3Image[]> {
-    if (!this.s3 || !this.config) {
+    if (!this.s3Client || !this.config) {
       throw new Error('S3 service not configured. Please provide your AWS credentials.');
     }
 
     try {
-      const params = {
+      const command = new ListObjectsV2Command({
         Bucket: this.config.bucketName,
         MaxKeys: 1000,
-      };
+      });
 
-      const data = await this.s3.listObjectsV2(params).promise();
+      const response = await this.s3Client.send(command);
       
-      if (!data.Contents) {
+      if (!response.Contents) {
         return [];
       }
 
       // Filter for image files
       const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg'];
-      const imageObjects = data.Contents.filter(obj => {
+      const imageObjects = response.Contents.filter(obj => {
         const key = obj.Key?.toLowerCase() || '';
         return imageExtensions.some(ext => key.endsWith(ext));
       });
@@ -82,10 +81,13 @@ export class S3Service {
             throw new Error('Invalid object data');
           }
 
-          const signedUrl = await this.s3!.getSignedUrlPromise('getObject', {
+          const getObjectCommand = new GetObjectCommand({
             Bucket: this.config!.bucketName,
             Key: obj.Key,
-            Expires: 3600, // 1 hour
+          });
+
+          const signedUrl = await getSignedUrl(this.s3Client!, getObjectCommand, {
+            expiresIn: 3600, // 1 hour
           });
 
           return {
@@ -106,23 +108,25 @@ export class S3Service {
   }
 
   async uploadImage(file: File, key?: string): Promise<string> {
-    if (!this.s3 || !this.config) {
+    if (!this.s3Client || !this.config) {
       throw new Error('S3 service not configured');
     }
 
     const uploadKey = key || `uploads/${Date.now()}-${file.name}`;
 
     try {
-      const params = {
+      const command = new PutObjectCommand({
         Bucket: this.config.bucketName,
         Key: uploadKey,
         Body: file,
         ContentType: file.type,
         ACL: 'private',
-      };
+      });
 
-      const result = await this.s3.upload(params).promise();
-      return result.Location;
+      await this.s3Client.send(command);
+      
+      // Return the object key since we can't get the direct URL easily
+      return uploadKey;
     } catch (error) {
       console.error('Error uploading to S3:', error);
       throw new Error(`Failed to upload image: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -130,7 +134,7 @@ export class S3Service {
   }
 
   isConfigured(): boolean {
-    return this.config !== null && this.s3 !== null;
+    return this.config !== null && this.s3Client !== null;
   }
 
   getConfig(): S3Config | null {
