@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { RefreshCw, Image as ImageIcon, AlertCircle } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
 import { ImageModal } from "./ImageModal";
 import { LoadingSpinner } from "./LoadingSpinner";
 import { S3Service } from "@/lib/s3Service";
@@ -20,7 +19,15 @@ export const ImageGallery = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [selectedImage, setSelectedImage] = useState<S3Image | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const { toast } = useToast();
+
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    // Simple alert for now, can be replaced with a proper toast later
+    if (type === 'error') {
+      console.error(message);
+    } else {
+      console.log(message);
+    }
+  };
 
   const fetchImages = async (isRefresh = false) => {
     try {
@@ -36,19 +43,12 @@ export const ImageGallery = () => {
       setImages(fetchedImages);
       
       if (isRefresh) {
-        toast({
-          title: "Gallery refreshed",
-          description: `Found ${fetchedImages.length} images`,
-        });
+        showToast(`Gallery refreshed - Found ${fetchedImages.length} images`);
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to load images";
       setError(errorMessage);
-      toast({
-        title: "Error",
-        description: errorMessage,
-        variant: "destructive",
-      });
+      showToast(errorMessage, 'error');
     } finally {
       setLoading(false);
       setRefreshing(false);

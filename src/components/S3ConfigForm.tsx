@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Settings, Eye, EyeOff, Save } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
 
 interface S3Config {
   accessKeyId: string;
@@ -27,7 +26,14 @@ export const S3ConfigForm = ({ onConfigSave, initialConfig }: S3ConfigFormProps)
   });
   const [showSecrets, setShowSecrets] = useState(false);
   const [saving, setSaving] = useState(false);
-  const { toast } = useToast();
+
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    if (type === 'error') {
+      alert('Error: ' + message);
+    } else {
+      alert('Success: ' + message);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,16 +49,9 @@ export const S3ConfigForm = ({ onConfigSave, initialConfig }: S3ConfigFormProps)
       localStorage.setItem("s3Config", JSON.stringify(config));
       onConfigSave(config);
       
-      toast({
-        title: "Configuration saved",
-        description: "S3 settings have been saved successfully",
-      });
+      showToast("S3 settings have been saved successfully");
     } catch (error) {
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to save configuration",
-        variant: "destructive",
-      });
+      showToast(error instanceof Error ? error.message : "Failed to save configuration", 'error');
     } finally {
       setSaving(false);
     }
